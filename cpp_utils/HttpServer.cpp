@@ -135,11 +135,22 @@ private:
 		ESP_LOGD("HttpServerTask", "Listening on port %d", m_pHttpServer->getPort());
 		Socket clientSocket;
 		while(1) {   // Loop forever.
-
+			if (!m_pHttpServer->m_socket.isValid()) { 
+				// Empirically this is needed.  There were a few scenarios and some timing issues
+				// where the Socket is invalid at this point and we would fall in to the accept()
+				// code and run into trouble.
+				m_pHttpServer->m_semaphoreServerStarted.give();  // Release the semaphore .. we are now no longer running.
+				return ;
+			}
 			ESP_LOGD("HttpServerTask", "Waiting for new peer client");
 
 			try {
 				clientSocket = m_pHttpServer->m_socket.accept();   // Block waiting for a new external client connection.
+				if (!m_pHttpServer->m_socket.isValid()) { 
+					// Another timing issue with close() and incoming connection race conditions
+					m_pHttpServer->m_semaphoreServerStarted.give();  // Release the semaphore .. we are now no longer running.
+					return ;
+				}
 				clientSocket.setTimeout(m_pHttpServer->getClientTimeout());
 			}
 			catch(std::exception &e) {
